@@ -884,7 +884,7 @@ async function avatarEffect(playerId, avatars) {
 async function celebrationEffect(player) {
   let players;
   let playerIds;
-  switch ( getRandomInt(10) ) {
+  switch ( getRandomInt(11) ) {
     case 0:
       avatarEffect(player.id, ["🤫", "😂", "🤫", "😂"]);
       break;
@@ -943,6 +943,14 @@ async function celebrationEffect(player) {
         room.setPlayerDiscProperties(player_.id, {xspeed: 10 * ((player.team == 1) ? 1 : -1)});
       };
       break;
+    case 10:
+      for (const player_ of room.getPlayerList()) {
+        if ( player_.team == 0 || player_.id == player.id ) continue;
+        let a = player_.x - player.x;
+        let b = player_.y - player.y;
+        let l = Math.sqrt(a * a + b * b);
+        room.setPlayerDiscProperties(player_.id, {xspeed: 10 * a / l, yspeed: 10 * b / l});
+      };
   };
 }
 
