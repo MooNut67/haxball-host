@@ -11,9 +11,16 @@ const { chromium } = require('playwright');
     });
 
     const page = await browser.newPage();
-    await page.goto('https://www.haxball.com/headless');
 
+    // Vào trang headless và chờ network idle
+    await page.goto('https://www.haxball.com/headless', { waitUntil: 'networkidle' });
+
+    // Chờ HBInit được định nghĩa trong window (timeout 15s)
+    await page.waitForFunction(() => typeof window.HBInit !== 'undefined', { timeout: 15000 });
+
+    // Bây giờ an toàn để chạy logic phòng trong page.evaluate
     await page.evaluate(() => {
+      // --- toàn bộ logic HBInit / room ở đây ---
       let accounts = {};
       let playerAccount = {};
       let operators = {};
@@ -124,6 +131,7 @@ const { chromium } = require('playwright');
           }
         }
       };
+      // --- end logic ---
     });
 
     console.log("Room HAX7tc3 đã khởi tạo với đầy đủ tính năng!");
@@ -132,3 +140,4 @@ const { chromium } = require('playwright');
     process.exit(1);
   }
 })();
+
