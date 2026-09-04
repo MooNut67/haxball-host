@@ -3,6 +3,7 @@ const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch({
     headless: true,
+    executablePath: chromium.executablePath(), // Playwright tự tìm Chromium đã tải
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
