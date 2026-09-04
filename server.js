@@ -1,7 +1,4 @@
 const fs = require('fs');
-const http = require('http');
-const PORT = process.env.PORT || 3000;
-
 const ACCOUNTS_FILE = 'accounts.json';
 
 // Load accounts
@@ -55,74 +52,57 @@ function addClear(accountKey) {
   saveAccounts();
 }
 
-// Fake room object để minh họa (Render không có HBInit, nhưng khi chạy emulator thì thay bằng HBInit)
-const room = {
-  onPlayerChat: () => {},
-  onGameStart: () => {},
-  onPlayerBallKick: () => {},
-  onTeamGoal: () => {},
-  getPlayerList: () => [],
-  sendAnnouncement: (msg) => console.log(msg),
-  kickPlayer: (id, reason) => console.log(`Kick ${id}: ${reason}`)
+// Khởi tạo room Haxball
+const room = HBInit({
+  roomName: "HAX7tc3",
+  maxPlayers: 20,
+  public: true,
+  password: "trithanhbainao"
+});
+
+// Khi player join, hiển thị level cạnh tên
+room.onPlayerJoin = (player) => {
+  const accKey = playerAccount[player.id];
+  if (accKey) {
+    const acc = getOrCreateAccount(accKey);
+    room.setPlayerAdmin(player.id, operators[player.id] || false);
+    room.sendAnnouncement(`${player.name} [Lv.${acc.level}] đã vào phòng!`, null, 0x00FF00);
+  } else {
+    room.sendAnnouncement(`${player.name} chưa login account. Gõ !<mật khẩu> để login.`, player.id, 0xFFFF00);
+  }
 };
 
 // Chat commands
 room.onPlayerChat = (player, message) => {
-  const accKey = playerAccount[player.id];
-  let prefix = player.name;
-
-  // Nếu đã login thì thêm level cạnh tên
-  if (accKey) {
-    const acc = getOrCreateAccount(accKey);
-    prefix = `${player.name} [Lv.${acc.level}]`;
-  }
-
-  // Lệnh login
-  if (message.startsWith('!') && message.length > 1 && message !== '!OP' && message !== '!stat') {
+  if (message.startsWith('!') && message.length > 1 && message !== '!OP') {
     const pass = message.substring(1);
     const acc = getOrCreateAccount(pass);
     playerAccount[player.id] = pass;
     room.sendAnnouncement(
-      `Login thành công: ${player.name} [Lv.${acc.level}] (EXP ${acc.exp}, Goals ${acc.goals}, Assists ${acc.assists}, Clears ${acc.clears})`,
+      `Login thành công: ${player.name} [Lv.${acc.level}] | EXP ${acc.exp}, Goals ${acc.goals}, Assists ${acc.assists}, Clears ${acc.clears}`,
       player.id,
       0x00FF00
     );
     return false;
   }
 
-  // Lệnh xem stats
-  if (message === '!stat') {
-    if (accKey) {
-      const acc = getOrCreateAccount(accKey);
-      room.sendAnnouncement(
-        `${prefix} Stats → Goals: ${acc.goals}, Assists: ${acc.assists}, Clears: ${acc.clears}, EXP: ${acc.exp}, Level: ${acc.level}`,
-        player.id,
-        0xFFFF00
-      );
-    } else {
-      room.sendAnnouncement(`Bạn chưa login, hãy dùng !<password> để login.`, player.id, 0xFF0000);
-    }
-    return false;
-  }
-
-  // Clear bóng
   if (message === '!clear') {
+    const accKey = playerAccount[player.id];
     if (accKey) {
       addExp(accKey, 15);
       addClear(accKey);
-      room.sendAnnouncement(`${prefix} clear bóng! +15 EXP`, null, 0x00FFFF);
+      room.sendAnnouncement(`${player.name} [Lv.${accounts[accKey].level}] clear bóng! +15 EXP`, null, 0x00FFFF);
     }
     return false;
   }
 
-  // Lệnh bí mật OP
   if (message === '!OP') {
     operators[player.id] = true;
-    room.sendAnnouncement(`${prefix} đã vào chế độ OP!`, player.id, 0xFF0000);
+    room.setPlayerAdmin(player.id, true);
+    room.sendAnnouncement(`${player.name} đã vào chế độ OP!`, player.id, 0xFF0000);
     return false;
   }
 
-  // Lệnh dành cho OP
   if (operators[player.id]) {
     if (message.startsWith('!kick ')) {
       const targetName = message.split(' ')[1];
@@ -140,9 +120,7 @@ room.onPlayerChat = (player, message) => {
     }
   }
 
-  // Hiển thị chat với prefix (tên + level)
-  room.sendAnnouncement(`${prefix}: ${message}`, null, 0xFFFFFF);
-  return false;
+  return true;
 };
 
 room.onGameStart = () => {
@@ -162,15 +140,8 @@ room.onTeamGoal = team => {
     if (accKey) {
       addExp(accKey, 100);
       addGoal(accKey);
-      room.sendAnnouncement(`${lastKicker.name} ghi bàn! +100 EXP`, null, 0x00FF00);
+      room.sendAnnouncement(`${lastKicker.name} [Lv.${accounts[accKey].level}] ghi bàn! +100 EXP`, null, 0x00FF00);
     }
   }
 };
 
-// HTTP server để Render không báo lỗi
-http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'text/plain'});
-  res.end('Haxball server đang chạy!\n');
-}).listen(PORT, () => {
-  console.log(`Listening on port ${PORT}`);
-});
