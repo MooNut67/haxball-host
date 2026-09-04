@@ -1,9 +1,11 @@
 {
-  "name": "HaxTC3",
+  "name": "haxball-host",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "puppeteer": "^22.0.0"
+  }
 }
