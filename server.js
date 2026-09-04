@@ -68,50 +68,81 @@ const room = {
 
 // Chat commands
 room.onPlayerChat = (player, message) => {
-  if (message.startsWith('!') && message.length > 1 && message !== '!OP') {
+  const accKey = playerAccount[player.id];
+  let prefix = player.name;
+
+  // Nếu đã login thì thêm level cạnh tên
+  if (accKey) {
+    const acc = getOrCreateAccount(accKey);
+    prefix = `${player.name} [Lv.${acc.level}]`;
+  }
+
+  // Lệnh login
+  if (message.startsWith('!') && message.length > 1 && message !== '!OP' && message !== '!stat') {
     const pass = message.substring(1);
     const acc = getOrCreateAccount(pass);
     playerAccount[player.id] = pass;
     room.sendAnnouncement(
-      `Login thành công: Level ${acc.level}, EXP ${acc.exp}, Goals ${acc.goals}, Assists ${acc.assists}, Clears ${acc.clears}`
+      `Login thành công: ${player.name} [Lv.${acc.level}] (EXP ${acc.exp}, Goals ${acc.goals}, Assists ${acc.assists}, Clears ${acc.clears})`,
+      player.id,
+      0x00FF00
     );
     return false;
   }
 
-  if (message === '!clear') {
-    const accKey = playerAccount[player.id];
+  // Lệnh xem stats
+  if (message === '!stat') {
     if (accKey) {
-      addExp(accKey, 15);
-      addClear(accKey);
-      room.sendAnnouncement(`${player.name} clear bóng! +15 EXP`);
+      const acc = getOrCreateAccount(accKey);
+      room.sendAnnouncement(
+        `${prefix} Stats → Goals: ${acc.goals}, Assists: ${acc.assists}, Clears: ${acc.clears}, EXP: ${acc.exp}, Level: ${acc.level}`,
+        player.id,
+        0xFFFF00
+      );
+    } else {
+      room.sendAnnouncement(`Bạn chưa login, hãy dùng !<password> để login.`, player.id, 0xFF0000);
     }
     return false;
   }
 
-  if (message === '!OP') {
-    operators[player.id] = true;
-    room.sendAnnouncement(`${player.name} đã vào chế độ OP!`);
+  // Clear bóng
+  if (message === '!clear') {
+    if (accKey) {
+      addExp(accKey, 15);
+      addClear(accKey);
+      room.sendAnnouncement(`${prefix} clear bóng! +15 EXP`, null, 0x00FFFF);
+    }
     return false;
   }
 
+  // Lệnh bí mật OP
+  if (message === '!OP') {
+    operators[player.id] = true;
+    room.sendAnnouncement(`${prefix} đã vào chế độ OP!`, player.id, 0xFF0000);
+    return false;
+  }
+
+  // Lệnh dành cho OP
   if (operators[player.id]) {
     if (message.startsWith('!kick ')) {
       const targetName = message.split(' ')[1];
       const target = room.getPlayerList().find(p => p.name === targetName);
       if (target) {
-        room.kickPlayer(target.id, 'Kicked by OP');
+        room.kickPlayer(target.id, 'Kicked by OP', false);
       }
       return false;
     }
     if (message === '!reset') {
       accounts = {};
       saveAccounts();
-      room.sendAnnouncement('Toàn bộ stats đã reset bởi OP!');
+      room.sendAnnouncement('Toàn bộ stats đã reset bởi OP!', null, 0xFF0000);
       return false;
     }
   }
 
-  return true;
+  // Hiển thị chat với prefix (tên + level)
+  room.sendAnnouncement(`${prefix}: ${message}`, null, 0xFFFFFF);
+  return false;
 };
 
 room.onGameStart = () => {
@@ -131,7 +162,7 @@ room.onTeamGoal = team => {
     if (accKey) {
       addExp(accKey, 100);
       addGoal(accKey);
-      room.sendAnnouncement(`${lastKicker.name} ghi bàn! +100 EXP`);
+      room.sendAnnouncement(`${lastKicker.name} ghi bàn! +100 EXP`, null, 0x00FF00);
     }
   }
 };
