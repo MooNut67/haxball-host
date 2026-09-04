@@ -1,7 +1,6 @@
-# Dockerfile
 FROM node:18-bullseye
 
-# Cài các dependency cần thiết cho Chromium
+# Cài các dependency hệ thống cho Chromium
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     fonts-liberation \
@@ -21,18 +20,19 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy package files và cài node modules
+# Copy package files và cài node modules (dùng npm install để không cần package-lock.json)
 COPY package*.json ./
 RUN npm install --production --no-audit --no-fund
 
 # Tải Playwright browsers đầy đủ trong build
-RUN npx playwright install --with-deps chromium
+RUN npx playwright install chromium
 
 # Copy source
 COPY . .
 
-# Đặt biến để Playwright biết nơi lưu browser (không bắt buộc nhưng rõ ràng)
+# Biến môi trường cho Playwright (tùy chọn)
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Start
+# Start command
 CMD ["node", "server.js"]
+
