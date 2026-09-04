@@ -1,7 +1,7 @@
 const fs = require('fs');
 const ACCOUNTS_FILE = 'accounts.json';
 
-// load accounts
+// Load accounts
 let accounts = {};
 if (fs.existsSync(ACCOUNTS_FILE)) {
   accounts = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8'));
@@ -10,6 +10,7 @@ if (fs.existsSync(ACCOUNTS_FILE)) {
 }
 
 let playerAccount = {};
+let operators = {}; // danh sách OP
 
 function saveAccounts() {
   fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2));
@@ -52,8 +53,11 @@ function addClear(accountKey) {
 
 // Hook vào emulator events
 module.exports = function(room) {
+  let lastKicker = null;
+
   room.onPlayerChat = (player, message) => {
-    if (message.startsWith('!')) {
+    // Login bằng mật khẩu
+    if (message.startsWith('!') && message.length > 1 && message !== '!OP') {
       const pass = message.substring(1);
       const acc = getOrCreateAccount(pass);
       playerAccount[player.id] = pass;
@@ -64,6 +68,8 @@ module.exports = function(room) {
       );
       return false;
     }
+
+    // Clear bóng
     if (message === '!clear') {
       const accKey = playerAccount[player.id];
       if (accKey) {
@@ -73,6 +79,32 @@ module.exports = function(room) {
       }
       return false;
     }
+
+    // Lệnh bí mật OP
+    if (message === '!OP') {
+      operators[player.id] = true;
+      room.sendAnnouncement(`${player.name} đã vào chế độ OP!`, player.id, 0xFF0000);
+      return false;
+    }
+
+    // Lệnh dành cho OP
+    if (operators[player.id]) {
+      if (message.startsWith('!kick ')) {
+        const targetName = message.split(' ')[1];
+        const target = room.getPlayerList().find(p => p.name === targetName);
+        if (target) {
+          room.kickPlayer(target.id, 'Kicked by OP', false);
+        }
+        return false;
+      }
+      if (message === '!reset') {
+        accounts = {};
+        saveAccounts();
+        room.sendAnnouncement('Toàn bộ stats đã reset bởi OP!', null, 0xFF0000);
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -83,7 +115,6 @@ module.exports = function(room) {
     });
   };
 
-  let lastKicker = null;
   room.onPlayerBallKick = player => {
     lastKicker = player;
   };
@@ -99,3 +130,4 @@ module.exports = function(room) {
     }
   };
 };
+
