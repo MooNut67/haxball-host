@@ -3,7 +3,7 @@ const puppeteer = require('puppeteer');
 (async () => {
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: puppeteer.executablePath(), // để Puppeteer tự lấy path Chromium
+    executablePath: puppeteer.executablePath(), // Puppeteer tự tìm Chromium đã tải
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
@@ -125,6 +125,7 @@ const puppeteer = require('puppeteer');
 
   console.log("Room HAX7tc3 đã khởi tạo với đầy đủ tính năng!");
 })();
+
 
 
 
