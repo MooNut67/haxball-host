@@ -3,7 +3,7 @@ const puppeteer = require('puppeteer');
 (async () => {
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: puppeteer.executablePath(), // lấy đúng path Chromium đã cài
+    executablePath: '/opt/render/.cache/puppeteer/chrome/linux-127.0.6533.88/chrome-linux64/chrome',
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
@@ -11,7 +11,6 @@ const puppeteer = require('puppeteer');
   await page.goto('https://www.haxball.com/headless');
 
   await page.evaluate(() => {
-    // Quản lý account và stats
     let accounts = {};
     let playerAccount = {};
     let operators = {};
@@ -126,5 +125,6 @@ const puppeteer = require('puppeteer');
 
   console.log("Room HAX7tc3 đã khởi tạo với đầy đủ tính năng!");
 })();
+
 
 
