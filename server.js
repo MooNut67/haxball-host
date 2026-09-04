@@ -3,6 +3,7 @@ const puppeteer = require('puppeteer');
 (async () => {
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: puppeteer.executablePath(), // lấy đúng path Chromium đã cài
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
@@ -32,22 +33,10 @@ const puppeteer = require('puppeteer');
       }
     }
 
-    function addGoal(accKey) {
-      const acc = getOrCreateAccount(accKey);
-      acc.goals++;
-    }
+    function addGoal(accKey) { getOrCreateAccount(accKey).goals++; }
+    function addAssist(accKey) { getOrCreateAccount(accKey).assists++; }
+    function addClear(accKey) { getOrCreateAccount(accKey).clears++; }
 
-    function addAssist(accKey) {
-      const acc = getOrCreateAccount(accKey);
-      acc.assists++;
-    }
-
-    function addClear(accKey) {
-      const acc = getOrCreateAccount(accKey);
-      acc.clears++;
-    }
-
-    // Khởi tạo room
     const room = HBInit({
       roomName: "HAX7tc3",
       maxPlayers: 20,
@@ -55,7 +44,6 @@ const puppeteer = require('puppeteer');
       password: "trithanhbainao"
     });
 
-    // Khi player join
     room.onPlayerJoin = (player) => {
       const accKey = playerAccount[player.id];
       if (accKey) {
@@ -66,7 +54,6 @@ const puppeteer = require('puppeteer');
       }
     };
 
-    // Chat commands
     room.onPlayerChat = (player, message) => {
       if (message.startsWith('!') && message.length > 1 && message !== '!OP') {
         const pass = message.substring(1);
@@ -123,9 +110,7 @@ const puppeteer = require('puppeteer');
       });
     };
 
-    room.onPlayerBallKick = player => {
-      lastKicker = player;
-    };
+    room.onPlayerBallKick = player => { lastKicker = player; };
 
     room.onTeamGoal = team => {
       if (lastKicker) {
@@ -141,4 +126,5 @@ const puppeteer = require('puppeteer');
 
   console.log("Room HAX7tc3 đã khởi tạo với đầy đủ tính năng!");
 })();
+
 
