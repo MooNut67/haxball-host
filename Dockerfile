@@ -20,19 +20,22 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy package files và cài node modules (dùng npm install để không cần package-lock.json)
+# Copy package files
 COPY package*.json ./
+
+# Cài node modules (sử dụng npm install để không cần package-lock.json)
 RUN npm install --production --no-audit --no-fund
 
-# Tải Playwright browsers đầy đủ trong build
-RUN npx playwright install chromium
+# ĐẶT biến môi trường trước khi cài browser để Playwright cài vào /ms-playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# Tải Playwright browsers đầy đủ trong build (và kèm deps nếu cần)
+RUN npx playwright install --with-deps chromium
 
 # Copy source
 COPY . .
 
-# Biến môi trường cho Playwright (tùy chọn)
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-
-# Start command
+# Start
 CMD ["node", "server.js"]
+
 
