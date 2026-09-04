@@ -1,12 +1,8 @@
-const puppeteer = require('puppeteer');
+const { chromium } = require('playwright');
 
 (async () => {
-  // In log sẽ thấy Puppeteer tìm Chromium ở đâu
-  console.log("Chromium path:", puppeteer.executablePath());
-
-  const browser = await puppeteer.launch({
+  const browser = await chromium.launch({
     headless: true,
-    executablePath: puppeteer.executablePath(), // Puppeteer tự tìm Chromium
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
