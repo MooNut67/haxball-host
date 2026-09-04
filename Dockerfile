@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Copy package files và cài node modules
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --production --no-audit --no-fund
 
 # Tải Playwright browsers đầy đủ trong build
 RUN npx playwright install --with-deps chromium
