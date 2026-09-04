@@ -3,7 +3,7 @@ const puppeteer = require('puppeteer');
 (async () => {
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: puppeteer.executablePath(), // Puppeteer tự tìm Chromium đã tải
+    channel: 'chrome', // dùng channel thay vì hard-code path
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
