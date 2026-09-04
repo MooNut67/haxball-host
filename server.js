@@ -1,6 +1,10 @@
+// server.js
+const http = require('http');
 const { chromium } = require('playwright');
 
-(async () => {
+const PORT = process.env.PORT || 3000; // Render cung cấp PORT
+
+async function startBot() {
   try {
     console.log('Playwright chromium executable:', chromium.executablePath());
 
@@ -12,15 +16,16 @@ const { chromium } = require('playwright');
 
     const page = await browser.newPage();
 
-    // Vào trang headless và chờ network idle
+    // Optional: log page console messages for debugging
+    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+
     await page.goto('https://www.haxball.com/headless', { waitUntil: 'networkidle' });
 
-    // Chờ HBInit được định nghĩa trong window (timeout 15s)
-    await page.waitForFunction(() => typeof window.HBInit !== 'undefined', { timeout: 15000 });
+    // Chờ HBInit xuất hiện
+    await page.waitForFunction(() => typeof window.HBInit !== 'undefined', { timeout: 30000 });
 
-    // Bây giờ an toàn để chạy logic phòng trong page.evaluate
     await page.evaluate(() => {
-      // --- toàn bộ logic HBInit / room ở đây ---
+      // --- Haxball room logic ---
       let accounts = {};
       let playerAccount = {};
       let operators = {};
@@ -137,7 +142,37 @@ const { chromium } = require('playwright');
     console.log("Room HAX7tc3 đã khởi tạo với đầy đủ tính năng!");
   } catch (err) {
     console.error('Startup error:', err);
-    process.exit(1);
+    // Không exit ngay — giữ process chạy để Render không nghĩ service chết
+    // Nếu muốn exit để redeploy, uncomment dòng dưới
+    // process.exit(1);
   }
-})();
+}
+
+// Start the bot (non-blocking)
+startBot().catch(err => console.error('startBot error:', err));
+
+// Minimal HTTP server to bind to the required port and respond to health checks
+const server = http.createServer((req, res) => {
+  if (req.url === '/health' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('OK');
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`HTTP server listening on port ${PORT}`);
+});
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down.');
+  server.close(() => process.exit(0));
+});
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down.');
+  server.close(() => process.exit(0));
+});
 
