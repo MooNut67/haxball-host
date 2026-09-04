@@ -1,16 +1,18 @@
-// server.js
+// server.js (debug-enhanced)
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const { chromium } = require('playwright');
 
 const PORT = process.env.PORT || 3000;
-
-let page = null; // page must be accessible from HTTP handlers
+let page = null;
+let browser = null;
 
 async function startBot() {
   try {
     console.log('Playwright chromium executable:', chromium.executablePath());
 
-    const browser = await chromium.launch({
+    browser = await chromium.launch({
       headless: true,
       executablePath: chromium.executablePath(),
       args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -18,156 +20,79 @@ async function startBot() {
 
     page = await browser.newPage();
 
-    // Forward page console messages to service logs for debugging
     page.on('console', msg => {
+      try { console.log('PAGE LOG:', msg.text()); } catch (e) { console.log('PAGE LOG ERR', e && e.message); }
+    });
+    page.on('pageerror', err => console.log('PAGE ERROR:', err && err.message));
+    page.on('requestfailed', req => console.log('REQUEST FAILED:', req.url(), req.failure() && req.failure().errorText));
+
+    console.log('Navigating to https://www.haxball.com ...');
+    await page.goto('https://www.haxball.com', { waitUntil: 'networkidle', timeout: 60000 });
+
+    console.log('Waiting for HBInit to appear (45s timeout)...');
+    const hbReady = await page.waitForFunction(() => typeof window.HBInit !== 'undefined', { timeout: 45000 })
+      .catch(e => { console.log('waitForFunction timeout/error:', e && e.message); return null; });
+
+    // capture debug artifacts regardless of hbReady
+    try {
+      const title = await page.title().catch(()=>null);
+      const url = page.url();
+      console.log('PAGE TITLE:', title);
+      console.log('PAGE URL:', url);
+
+      // save screenshot
+      const screenshotPath = '/tmp/haxball.png';
+      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(e => console.log('screenshot error', e && e.message));
+      console.log('Saved screenshot to', screenshotPath);
+
+      // save HTML (first 20000 chars)
+      const html = await page.content().catch(()=>null);
+      if (html) {
+        const snippet = html.slice(0, 20000);
+        fs.writeFileSync('/tmp/page.html', snippet, 'utf8');
+        console.log('Saved page HTML snippet to /tmp/page.html (first 20k chars)');
+      }
+    } catch (e) {
+      console.log('Debug artifact capture error:', e && e.message);
+    }
+
+    if (!hbReady) {
+      console.log('HBInit not found — aborting room creation attempt. Check /screenshot and /debug for page state.');
+      return;
+    }
+
+    console.log('HBInit found — creating room inside page.evaluate with try/catch...');
+    const evalResult = await page.evaluate(() => {
       try {
-        console.log('PAGE LOG:', msg.text());
-      } catch (e) {
-        console.log('PAGE LOG ERROR:', e && e.message);
-      }
-    });
-
-    // Open the main Haxball page (not /headless) so the room appears in public server list
-    await page.goto('https://www.haxball.com', { waitUntil: 'networkidle' });
-
-    // Wait until HBInit is available on the page
-    await page.waitForFunction(() => typeof window.HBInit !== 'undefined', { timeout: 30000 });
-
-    // Create the room and expose it to window.room so /status can read it
-    await page.evaluate(() => {
-      // --- Haxball room logic ---
-      let accounts = {};
-      let playerAccount = {};
-      let operators = {};
-      let lastKicker = null;
-
-      function getOrCreateAccount(password) {
-        if (!accounts[password]) {
-          accounts[password] = { level: 1, exp: 0, goals: 0, assists: 0, clears: 0 };
-        }
-        return accounts[password];
-      }
-
-      function addExp(accKey, amount) {
-        const acc = getOrCreateAccount(accKey);
-        acc.exp += amount;
-        while (acc.level < 50 && acc.exp >= 1000) {
-          acc.exp -= 1000;
-          acc.level++;
-        }
-      }
-
-      function addGoal(accKey) { getOrCreateAccount(accKey).goals++; }
-      function addAssist(accKey) { getOrCreateAccount(accKey).assists++; }
-      function addClear(accKey) { getOrCreateAccount(accKey).clears++; }
-
-      const room = HBInit({
-        roomName: "HAX7tc3",
-        maxPlayers: 20,
-        public: true,
-        password: "trithanhbainao"
-      });
-
-      // Expose room to window so the Node HTTP server can query it via page.evaluate
-      window.room = room;
-
-      room.onPlayerJoin = (player) => {
-        const accKey = playerAccount[player.id];
-        if (accKey) {
-          const acc = getOrCreateAccount(accKey);
-          room.sendAnnouncement(`${player.name} [Lv.${acc.level}] đã vào phòng!`, null, 0x00FF00);
-        } else {
-          room.sendAnnouncement(`${player.name} chưa login account. Gõ !<mật khẩu> để login.`, player.id, 0xFFFF00);
-        }
-        // Also log to browser console so Playwright forwards it to service logs
-        console.log('onPlayerJoin', player && player.name, player && player.id);
-      };
-
-      room.onPlayerChat = (player, message) => {
-        if (message.startsWith('!') && message.length > 1 && message !== '!OP') {
-          const pass = message.substring(1);
-          const acc = getOrCreateAccount(pass);
-          playerAccount[player.id] = pass;
-          room.sendAnnouncement(
-            `Login thành công: ${player.name} [Lv.${acc.level}] | EXP ${acc.exp}, Goals ${acc.goals}, Assists ${acc.assists}, Clears ${acc.clears}`,
-            player.id,
-            0x00FF00
-          );
-          return false;
-        }
-
-        if (message === '!clear') {
-          const accKey = playerAccount[player.id];
-          if (accKey) {
-            addExp(accKey, 15);
-            addClear(accKey);
-            room.sendAnnouncement(`${player.name} [Lv.${accounts[accKey].level}] clear bóng! +15 EXP`, null, 0x00FFFF);
-          }
-          return false;
-        }
-
-        if (message === '!OP') {
-          operators[player.id] = true;
-          room.setPlayerAdmin(player.id, true);
-          room.sendAnnouncement(`${player.name} đã vào chế độ OP!`, player.id, 0xFF0000);
-          return false;
-        }
-
-        if (operators[player.id]) {
-          if (message.startsWith('!kick ')) {
-            const targetName = message.split(' ')[1];
-            const target = room.getPlayerList().find(p => p.name === targetName);
-            if (target) {
-              room.kickPlayer(target.id, 'Kicked by OP', false);
-            }
-            return false;
-          }
-          if (message === '!reset') {
-            accounts = {};
-            room.sendAnnouncement('Toàn bộ stats đã reset bởi OP!', null, 0xFF0000);
-            return false;
-          }
-        }
-
-        return true;
-      };
-
-      room.onGameStart = () => {
-        room.getPlayerList().forEach(p => {
-          const accKey = playerAccount[p.id];
-          if (accKey) addExp(accKey, 50);
+        const room = HBInit({
+          roomName: "HAX7tc3",
+          maxPlayers: 20,
+          public: true,
+          password: "" // empty for public visibility during debug
         });
-        console.log('onGameStart');
-      };
+        window.room = room;
+        room.onPlayerJoin = p => console.log('ROOM onPlayerJoin', p && p.name, p && p.id);
+        return { ok: true, name: (room.getRoomData && room.getRoomData().name) || room.roomName || 'HAX7tc3' };
+      } catch (err) {
+        return { ok: false, error: err && err.message ? err.message : String(err) };
+      }
+    }).catch(e => ({ ok: false, error: 'page.evaluate failed: ' + (e && e.message) }));
 
-      room.onPlayerBallKick = player => { lastKicker = player; };
+    console.log('page.evaluate result:', evalResult);
+    if (evalResult && evalResult.ok) {
+      console.log(`Room ${evalResult.name} đã khởi tạo với đầy đủ tính năng!`);
+    } else {
+      console.log('Room creation failed:', evalResult && evalResult.error);
+    }
 
-      room.onTeamGoal = team => {
-        if (lastKicker) {
-          const accKey = playerAccount[lastKicker.id];
-          if (accKey) {
-            addExp(accKey, 100);
-            addGoal(accKey);
-            room.sendAnnouncement(`${lastKicker.name} [Lv.${accounts[accKey].level}] ghi bàn! +100 EXP`, null, 0x00FF00);
-          }
-        }
-      };
-
-      console.log('Room created in page context:', room.getRoomData && room.getRoomData().name);
-      // --- end logic ---
-    });
-
-    console.log("Room HAX7tc3 đã khởi tạo với đầy đủ tính năng!");
   } catch (err) {
-    console.error('Startup error:', err);
-    // keep process alive so Render doesn't think service died
+    console.error('Startup error (outer):', err && err.stack ? err.stack : err);
   }
 }
 
-// Start the bot (non-blocking)
-startBot().catch(err => console.error('startBot error:', err));
+startBot().catch(err => console.error('startBot error:', err && err.stack ? err.stack : err));
 
-// HTTP server with /health, /status and root HTML
+// HTTP server with /health, /status, /debug, /screenshot
 const server = http.createServer(async (req, res) => {
   try {
     if (req.url === '/health') {
@@ -177,13 +102,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.url === '/status') {
-      // If page is not ready yet, return informative response
       if (!page) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: 'page not initialized yet' }));
         return;
       }
-
       try {
         const status = await page.evaluate(() => {
           try {
@@ -205,20 +128,38 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.url === '/debug') {
+      // return page title, url, HBInit existence, and first 2000 chars of saved HTML
+      const title = page ? await page.title().catch(()=>null) : null;
+      const url = page ? page.url() : null;
+      const hbExists = page ? await page.evaluate(() => typeof window.HBInit !== 'undefined').catch(()=>false) : false;
+      let htmlSnippet = null;
+      try {
+        if (fs.existsSync('/tmp/page.html')) {
+          htmlSnippet = fs.readFileSync('/tmp/page.html', 'utf8').slice(0, 2000);
+        }
+      } catch (e) { htmlSnippet = 'read error'; }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, title, url, hbExists, htmlSnippet }));
+      return;
+    }
+
+    if (req.url === '/screenshot') {
+      const p = '/tmp/haxball.png';
+      if (fs.existsSync(p)) {
+        const img = fs.readFileSync(p);
+        res.writeHead(200, { 'Content-Type': 'image/png' });
+        res.end(img);
+      } else {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('screenshot not found');
+      }
+      return;
+    }
+
     if (req.url === '/' || req.url === '/index.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(`
-        <!doctype html>
-        <html>
-          <head><meta charset="utf-8"><title>Haxball Host</title></head>
-          <body style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">
-            <h1>Haxball Host</h1>
-            <p>Room: <strong>HAX7tc3</strong></p>
-            <p>Password: <strong>trithanhbainao</strong></p>
-            <p>Use <code>/status</code> to see current players.</p>
-          </body>
-        </html>
-      `);
+      res.end(`<html><body><h1>Haxball Host (debug)</h1><p>Room: HAX7tc3</p><p>Use /status, /debug, /screenshot</p></body></html>`);
       return;
     }
 
@@ -230,16 +171,16 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`HTTP server listening on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`HTTP server listening on port ${PORT}`));
 
-// Graceful shutdown
-process.on('SIGINT', () => {
+// graceful shutdown
+process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down.');
+  try { if (browser) await browser.close(); } catch(e){}
   server.close(() => process.exit(0));
 });
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down.');
+  try { if (browser) await browser.close(); } catch(e){}
   server.close(() => process.exit(0));
 });
